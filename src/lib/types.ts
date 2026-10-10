@@ -7,6 +7,9 @@ export interface Profile {
   role: Role;
   full_name: string | null;
   phone: string | null;
+  language: 'te' | 'en';
+  notify_board: boolean;
+  notify_alight: boolean;
 }
 
 export interface Student {
@@ -16,6 +19,43 @@ export interface Student {
   class_name: string | null;
   card_code: string;
   vehicle_id: string | null;
+  stop_id: string | null;
+}
+
+export interface Vehicle {
+  id: string;
+  reg_number: string;
+  school_name: string;
+  district: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+}
+
+export interface RouteStop {
+  id: string;
+  route_id: string;
+  seq: number;
+  name: string;
+  lat: number;
+  lng: number;
+  scheduled_time: string | null;
+}
+
+export interface BusRoute {
+  id: string;
+  vehicle_id: string;
+  name: string;
+  path: [number, number][];
+}
+
+export interface BusLocation {
+  vehicle_id: string;
+  trip_id: string | null;
+  lat: number;
+  lng: number;
+  heading: number | null;
+  speed: number | null;
+  updated_at: string;
 }
 
 export interface Trip {

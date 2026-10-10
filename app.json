@@ -11,25 +11,36 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFB703"
+      "backgroundColor": "#23306B"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.schoolride.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "SchoolRide uses the camera to scan student ID cards."
+        "NSCameraUsageDescription": "SchoolRide uses the camera to scan student ID cards.",
+        "NSLocationWhenInUseUsageDescription": "SchoolRide shares this phone's location with parents while a trip is running."
       }
     },
     "android": {
       "package": "in.schoolride.app",
-      "permissions": ["CAMERA", "POST_NOTIFICATIONS"],
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#FFB703",
+        "backgroundColor": "#23306B",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_API_KEY"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,13 +50,30 @@
       "expo-secure-store",
       [
         "expo-camera",
-        { "cameraPermission": "Allow SchoolRide to use the camera to scan student ID cards." }
+        {
+          "cameraPermission": "Allow SchoolRide to use the camera to scan student ID cards."
+        }
       ],
-      ["expo-notifications", { "color": "#FFB703" }]
+      [
+        "expo-notifications",
+        {
+          "color": "#23306B"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SchoolRide shares this phone's location with parents while a trip is running."
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": true },
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
-      "eas": { "projectId": "REPLACE_WITH_EAS_PROJECT_ID" }
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
     }
   }
 }

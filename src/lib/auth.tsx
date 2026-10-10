@@ -10,6 +10,7 @@ interface AuthState {
   sendOtp: (phone: string) => Promise<string | null>;
   verifyOtp: (phone: string, token: string) => Promise<string | null>;
   completeProfile: (role: Role, fullName: string) => Promise<string | null>;
+  updateProfile: (patch: Partial<Pick<Profile, 'full_name' | 'language' | 'notify_board' | 'notify_alight'>>) => Promise<string | null>;
   signOut: () => Promise<void>;
 }
 
@@ -71,6 +72,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           full_name: fullName,
           phone: session.user.phone ?? null,
         });
+        if (!error) await loadProfile(session.user.id);
+        return error?.message ?? null;
+      },
+      updateProfile: async (patch) => {
+        if (!session) return 'Not signed in';
+        const { error } = await supabase.from('profiles').update(patch).eq('id', session.user.id);
         if (!error) await loadProfile(session.user.id);
         return error?.message ?? null;
       },

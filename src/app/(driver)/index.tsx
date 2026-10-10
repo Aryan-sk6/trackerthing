@@ -1,30 +1,57 @@
+import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { Button, Card } from '@/components/ui';
-import { useAuth } from '@/lib/auth';
+import { Badge, Button, Card, ScreenHeader, Segmented } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
+import { startSharing, stopSharing } from '@/lib/locationSharing';
+import { getShareLocation } from '@/lib/prefs';
 import { supabase } from '@/lib/supabase';
-import type { ScanResult, Trip, TripKind } from '@/lib/types';
-import { colors, radius, spacing } from '@/theme';
+import type { ScanKind, ScanResult, Trip, TripKind } from '@/lib/types';
+import { colors, fonts, radius, spacing } from '@/theme';
 
 /** Ignore the same card for this long so one tap doesn't toggle board/alight twice. */
 const RESCAN_COOLDOWN_MS = 4000;
+const KEEP_AWAKE_TAG = 'trip';
 
 export default function DriverTrip() {
-  const { signOut } = useAuth();
+  const { t } = useI18n();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
+  const [studentCount, setStudentCount] = useState(0);
+  const [status, setStatus] = useState<Map<string, ScanKind>>(new Map());
+  const [kind, setKind] = useState<TripKind>(new Date().getHours() < 12 ? 'morning' : 'evening');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [last, setLast] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const recent = useRef(new Map<string, number>());
 
+  const loadTripState = useCallback(async (tripId: string) => {
+    const { data } = await supabase
+      .from('scan_events')
+      .select('student_id, kind')
+      .eq('trip_id', tripId)
+      .order('scanned_at');
+    const m = new Map<string, ScanKind>();
+    for (const e of (data ?? []) as { student_id: string; kind: ScanKind }[]) m.set(e.student_id, e.kind);
+    setStatus(m);
+  }, []);
+
+  const beginSharing = useCallback(async (vId: string, tripId: string) => {
+    if (!(await getShareLocation())) return setSharing(false);
+    setSharing(await startSharing(vId, tripId));
+  }, []);
+
   const load = useCallback(async () => {
     const { data: vehicle } = await supabase.from('vehicles').select('id').maybeSingle();
     setVehicleId(vehicle?.id ?? null);
+    const { count } = await supabase.from('students').select('id', { count: 'exact', head: true });
+    setStudentCount(count ?? 0);
     const { data: open } = await supabase
       .from('trips')
       .select('*')
@@ -32,16 +59,30 @@ export default function DriverTrip() {
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    setTrip((open as Trip | null) ?? null);
+    const current = (open as Trip | null) ?? null;
+    setTrip(current);
+    if (current && vehicle) {
+      await loadTripState(current.id);
+      await beginSharing(vehicle.id, current.id);
+    }
     setLoading(false);
-  }, []);
+  }, [loadTripState, beginSharing]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function startTrip(kind: TripKind) {
-    if (!vehicleId) return Alert.alert('No vehicle', 'Ask your school admin to assign a vehicle.');
+  // Keep the phone awake while a trip is open so location keeps flowing to parents.
+  useEffect(() => {
+    if (!trip) return;
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+    return () => {
+      void deactivateKeepAwake(KEEP_AWAKE_TAG);
+    };
+  }, [trip]);
+
+  async function startTrip() {
+    if (!vehicleId) return Alert.alert(t('noVehicle'), t('noVehicleBody'));
     setBusy(true);
     const { data, error: err } = await supabase
       .from('trips')
@@ -49,8 +90,10 @@ export default function DriverTrip() {
       .select()
       .single();
     setBusy(false);
-    if (err) Alert.alert('Could not start trip', err.message);
-    else setTrip(data as Trip);
+    if (err) return Alert.alert(t('errorTitle'), err.message);
+    setTrip(data as Trip);
+    setStatus(new Map());
+    await beginSharing(vehicleId, (data as Trip).id);
   }
 
   async function endTrip() {
@@ -60,10 +103,12 @@ export default function DriverTrip() {
       .from('trips')
       .update({ ended_at: new Date().toISOString() })
       .eq('id', trip.id);
+    if (vehicleId) await stopSharing(vehicleId);
     setBusy(false);
-    if (err) return Alert.alert('Could not end trip', err.message);
+    if (err) return Alert.alert(t('errorTitle'), err.message);
     setTrip(null);
     setLast(null);
+    setSharing(false);
   }
 
   async function onScan({ data }: BarcodeScanningResult) {
@@ -82,8 +127,10 @@ export default function DriverTrip() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
+    const result = (rows as ScanResult[])[0];
     setError(null);
-    setLast((rows as ScanResult[])[0]);
+    setLast(result);
+    setStatus((prev) => new Map(prev).set(result.student_id, result.kind));
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
@@ -92,64 +139,133 @@ export default function DriverTrip() {
   if (!trip) {
     return (
       <View style={styles.container}>
-        <Card style={{ gap: spacing.md }}>
-          <Text style={styles.heading}>Start a trip</Text>
-          <Text style={styles.muted}>
-            Parents are alerted the moment you scan their child's ID card.
-          </Text>
-          <Button title="Morning pickup" loading={busy} onPress={() => startTrip('morning')} />
-          <Button title="Evening drop" variant="secondary" loading={busy} onPress={() => startTrip('evening')} />
-        </Card>
-        <Button title="Sign out" variant="secondary" onPress={signOut} />
+        <ScreenHeader title={t('startTrip')} showCrest />
+        <View style={styles.body}>
+          <Card style={{ gap: spacing.md }}>
+            <Text style={styles.text}>{t('startTripBody')}</Text>
+            <Segmented
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: 'morning', label: t('morningPickup') },
+                { value: 'evening', label: t('eveningDrop') },
+              ]}
+            />
+            <Button title={t('startTrip')} loading={busy} onPress={startTrip} />
+          </Card>
+          {!vehicleId && <Text style={styles.warn}>{t('noVehicleBody')}</Text>}
+        </View>
       </View>
     );
   }
 
-  if (!permission?.granted) {
-    return (
-      <View style={styles.container}>
-        <Card style={{ gap: spacing.md }}>
-          <Text style={styles.heading}>Camera access needed</Text>
-          <Text style={styles.muted}>Allow the camera to scan student ID cards.</Text>
-          <Button title="Allow camera" onPress={requestPermission} />
-        </Card>
-      </View>
-    );
-  }
+  const onBoard = [...status.values()].filter((k) => k === 'board').length;
 
   return (
     <View style={styles.container}>
-      <View style={styles.cameraWrap}>
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'ean13'] }}
-          onBarcodeScanned={onScan}
-        />
-      </View>
-      <Card>
-        {error ? (
-          <Text style={[styles.result, { color: colors.danger }]}>{error}</Text>
-        ) : last ? (
-          <>
-            <Text style={[styles.result, { color: last.kind === 'board' ? colors.success : colors.info }]}>
-              {last.kind === 'board' ? 'Boarded' : 'Got off'}: {last.student_name}
-            </Text>
-            <Text style={styles.muted}>{new Date(last.scanned_at).toLocaleTimeString()}</Text>
-          </>
+      <ScreenHeader
+        title={trip.kind === 'morning' ? t('morningPickup') : t('eveningDrop')}
+        subtitle={sharing ? t('sharingLocation') : undefined}
+      />
+      <View style={styles.body}>
+        {!permission?.granted ? (
+          <Card style={{ gap: spacing.md }}>
+            <Text style={styles.heading}>{t('cameraNeeded')}</Text>
+            <Button title={t('allowCamera')} onPress={requestPermission} />
+          </Card>
         ) : (
-          <Text style={styles.muted}>Hold a student ID card in front of the camera…</Text>
+          <View style={styles.cameraWrap}>
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'ean13'] }}
+              onBarcodeScanned={onScan}
+            />
+            <View pointerEvents="none" style={styles.frame}>
+              {(['tl', 'tr', 'bl', 'br'] as const).map((c) => (
+                <View key={c} style={[styles.corner, cornerStyles[c]]} />
+              ))}
+            </View>
+            <Text style={styles.cameraHint}>{t('keepCardInFrame')}</Text>
+          </View>
         )}
-      </Card>
-      <Button title="End trip" variant="danger" loading={busy} onPress={endTrip} />
+
+        <View
+          style={[
+            styles.result,
+            { backgroundColor: error ? colors.terracotta : last?.kind === 'alight' ? colors.indigo : last ? colors.green : colors.card },
+            !error && !last && { borderWidth: 1, borderColor: colors.border },
+          ]}
+        >
+          {error ? (
+            <>
+              <Ionicons name="alert-circle" size={32} color="#fff" />
+              <Text style={[styles.resultText, { color: '#fff' }]}>{error}</Text>
+            </>
+          ) : last ? (
+            <>
+              <Ionicons name={last.kind === 'board' ? 'checkmark-circle' : 'exit'} size={32} color="#fff" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.resultText, { color: '#fff' }]}>{last.student_name}</Text>
+                <Text style={styles.resultSub}>
+                  {last.kind === 'board' ? t('boarded') : t('gotOff')} · {new Date(last.scanned_at).toLocaleTimeString()}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={[styles.text, { flex: 1 }]}>{t('keepCardInFrame')}…</Text>
+          )}
+        </View>
+
+        <View style={styles.counter}>
+          <Badge tone="green" icon="people" label={`${t('onBoardCount')} ${onBoard} / ${studentCount}`} />
+        </View>
+        <Button title={t('endTrip')} variant="danger" loading={busy} onPress={endTrip} />
+      </View>
     </View>
   );
 }
 
+const CORNER = 44;
+const cornerStyles = StyleSheet.create({
+  tl: { left: 0, top: 0, borderLeftWidth: 5, borderTopWidth: 5, borderTopLeftRadius: 14 },
+  tr: { right: 0, top: 0, borderRightWidth: 5, borderTopWidth: 5, borderTopRightRadius: 14 },
+  bl: { left: 0, bottom: 0, borderLeftWidth: 5, borderBottomWidth: 5, borderBottomLeftRadius: 14 },
+  br: { right: 0, bottom: 0, borderRightWidth: 5, borderBottomWidth: 5, borderBottomRightRadius: 14 },
+});
+
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.md, gap: spacing.md, backgroundColor: colors.bg },
-  cameraWrap: { flex: 1, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#000' },
-  heading: { fontSize: 20, fontWeight: '700', color: colors.ink },
-  muted: { color: colors.muted },
-  result: { fontSize: 18, fontWeight: '700' },
+  container: { flex: 1, backgroundColor: colors.bg },
+  body: { flex: 1, padding: spacing.md, gap: spacing.md },
+  cameraWrap: {
+    flex: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frame: { width: 220, height: 220 },
+  corner: { position: 'absolute', width: CORNER, height: CORNER, borderColor: colors.primary },
+  cameraHint: {
+    position: 'absolute',
+    bottom: 16,
+    color: colors.onIndigo,
+    fontFamily: fonts.bodySemi,
+    fontSize: 16,
+  },
+  heading: { fontFamily: fonts.display, fontSize: 20, lineHeight: 28, color: colors.ink },
+  text: { fontFamily: fonts.body, fontSize: 16, lineHeight: 24, color: colors.muted },
+  warn: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.terracotta },
+  result: {
+    minHeight: 72,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  resultText: { fontFamily: fonts.display, fontSize: 21, lineHeight: 28, flexShrink: 1 },
+  resultSub: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#fff' },
+  counter: { flexDirection: 'row', justifyContent: 'center' },
 });

@@ -1,12 +1,14 @@
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { Card, Empty } from '@/components/ui';
+import { Avatar, Card, Empty, ScreenHeader } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import type { Student } from '@/lib/types';
-import { colors, spacing } from '@/theme';
+import { colors, fonts, spacing } from '@/theme';
 
 export default function RouteStudents() {
+  const { t } = useI18n();
   const [students, setStudents] = useState<Student[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -24,30 +26,36 @@ export default function RouteStudents() {
   );
 
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
-      data={students}
-      keyExtractor={(s) => s.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
-      ListEmptyComponent={<Empty text="No students assigned to your vehicle yet." />}
-      renderItem={({ item }) => (
-        <Card>
-          <View>
-            <Text style={styles.name}>{item.full_name}</Text>
-            <Text style={styles.muted}>
-              {item.school_name}
-              {item.class_name ? ` · ${item.class_name}` : ''}
-            </Text>
-          </View>
-        </Card>
-      )}
-      ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-    />
+    <View style={styles.container}>
+      <ScreenHeader title={t('tabStudents')} subtitle={`${students.length}`} />
+      <FlatList
+        contentContainerStyle={styles.list}
+        data={students}
+        keyExtractor={(s) => s.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
+        ListEmptyComponent={<Empty text={t('noRecords')} />}
+        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+        renderItem={({ item }) => (
+          <Card style={styles.row}>
+            <Avatar name={item.full_name} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name}>{item.full_name}</Text>
+              <Text style={styles.muted}>
+                {item.school_name}
+                {item.class_name ? ` · ${item.class_name}` : ''}
+              </Text>
+            </View>
+          </Card>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   list: { padding: spacing.md },
-  name: { fontSize: 16, fontWeight: '700', color: colors.ink },
-  muted: { color: colors.muted, marginTop: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  name: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.ink },
+  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 },
 });

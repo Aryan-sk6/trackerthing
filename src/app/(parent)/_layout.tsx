@@ -1,11 +1,14 @@
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect } from 'expo-router';
+import { Tabs } from 'expo-router/js-tabs';
 import { useEffect } from 'react';
+import { tabIcon, tabScreenOptions } from '@/components/tabBar';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n';
 import { registerForPush } from '@/lib/notifications';
 import { configurePurchases } from '@/lib/purchases';
-import { colors } from '@/theme';
 
 export default function ParentLayout() {
+  const { t } = useI18n();
   const { profile, session } = useAuth();
 
   useEffect(() => {
@@ -17,15 +20,11 @@ export default function ParentLayout() {
   if (profile && profile.role !== 'parent') return <Redirect href="/" />;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primaryDark,
-        headerTitleStyle: { fontWeight: '700' },
-      }}
-    >
-      <Tabs.Screen name="index" options={{ title: 'Today', tabBarLabel: 'Today' }} />
-      <Tabs.Screen name="history" options={{ title: 'Travel log', tabBarLabel: 'Log' }} />
-      <Tabs.Screen name="subscription" options={{ title: 'Subscription', tabBarLabel: 'Plan' }} />
+    <Tabs screenOptions={tabScreenOptions}>
+      <Tabs.Screen name="index" options={{ title: t('tabHome'), tabBarIcon: tabIcon('map-outline', 'map') }} />
+      <Tabs.Screen name="history" options={{ title: t('tabLog'), tabBarIcon: tabIcon('document-text-outline', 'document-text') }} />
+      <Tabs.Screen name="subscription" options={{ title: t('tabPlan'), tabBarIcon: tabIcon('ribbon-outline', 'ribbon') }} />
+      <Tabs.Screen name="settings" options={{ title: t('tabSettings'), tabBarIcon: tabIcon('settings-outline', 'settings') }} />
     </Tabs>
   );
 }

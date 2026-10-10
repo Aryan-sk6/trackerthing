@@ -11,6 +11,9 @@ create table public.profiles (
   role text not null check (role in ('driver', 'parent')),
   full_name text,
   phone text,
+  language text not null default 'te' check (language in ('te', 'en')),
+  notify_board boolean not null default true,
+  notify_alight boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -19,7 +22,28 @@ create table public.vehicles (
   driver_id uuid references public.profiles on delete set null,
   reg_number text not null unique,        -- e.g. TS09UB1234
   school_name text not null,
-  district text                           -- Telangana district
+  district text,                          -- Telangana district
+  driver_name text,                       -- shown to parents
+  driver_phone text
+);
+
+-- A route is the polyline the bus drives; stops are where children board.
+create table public.routes (
+  id uuid primary key default gen_random_uuid(),
+  vehicle_id uuid not null unique references public.vehicles on delete cascade,
+  name text not null,
+  path jsonb not null default '[]'          -- [[lat, lng], ...] in driving order
+);
+
+create table public.route_stops (
+  id uuid primary key default gen_random_uuid(),
+  route_id uuid not null references public.routes on delete cascade,
+  seq int not null,
+  name text not null,
+  lat double precision not null,
+  lng double precision not null,
+  scheduled_time time,
+  unique (route_id, seq)
 );
 
 create table public.students (
@@ -29,6 +53,7 @@ create table public.students (
   class_name text,
   card_code text not null unique,         -- value encoded in the ID card QR/barcode
   vehicle_id uuid references public.vehicles on delete set null,
+  stop_id uuid references public.route_stops on delete set null,
   parent_phone text                       -- used to auto-link a parent on sign-up
 );
 
@@ -56,6 +81,17 @@ create table public.scan_events (
   scanned_at timestamptz not null default now()
 );
 create index scan_events_student_time on public.scan_events (student_id, scanned_at desc);
+
+-- One row per vehicle: where the driver's phone last reported (no tracker hardware).
+create table public.bus_locations (
+  vehicle_id uuid primary key references public.vehicles on delete cascade,
+  trip_id uuid references public.trips on delete cascade,
+  lat double precision not null,
+  lng double precision not null,
+  heading real,
+  speed real,
+  updated_at timestamptz not null default now()
+);
 
 create table public.push_tokens (
   user_id uuid references public.profiles on delete cascade,
@@ -154,6 +190,9 @@ alter table public.students enable row level security;
 alter table public.parent_students enable row level security;
 alter table public.trips enable row level security;
 alter table public.scan_events enable row level security;
+alter table public.routes enable row level security;
+alter table public.route_stops enable row level security;
+alter table public.bus_locations enable row level security;
 alter table public.push_tokens enable row level security;
 alter table public.subscriptions enable row level security;
 
@@ -163,6 +202,45 @@ create policy "own profile update" on public.profiles for update using (id = aut
   with check (id = auth.uid() and role = (select role from public.profiles where id = auth.uid()));
 
 create policy "driver sees own vehicle" on public.vehicles for select using (driver_id = auth.uid());
+
+create policy "parent sees child vehicle" on public.vehicles for select using (
+  id in (select s.vehicle_id from public.students s
+         join public.parent_students ps on ps.student_id = s.id
+         where ps.parent_id = auth.uid())
+);
+
+create policy "driver sees own route" on public.routes for select using (
+  vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
+);
+create policy "subscribed parent sees child route" on public.routes for select using (
+  public.is_subscribed(auth.uid()) and vehicle_id in (
+    select s.vehicle_id from public.students s
+    join public.parent_students ps on ps.student_id = s.id where ps.parent_id = auth.uid())
+);
+create policy "driver sees own stops" on public.route_stops for select using (
+  route_id in (select r.id from public.routes r join public.vehicles v on v.id = r.vehicle_id
+               where v.driver_id = auth.uid())
+);
+create policy "subscribed parent sees child stops" on public.route_stops for select using (
+  public.is_subscribed(auth.uid()) and route_id in (
+    select r.id from public.routes r
+    join public.students s on s.vehicle_id = r.vehicle_id
+    join public.parent_students ps on ps.student_id = s.id where ps.parent_id = auth.uid())
+);
+
+-- Live bus position: written by the driver's phone during a trip.
+create policy "driver writes own bus location" on public.bus_locations for all using (
+  vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
+) with check (
+  vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
+);
+create policy "subscribed parent sees live bus" on public.bus_locations for select using (
+  public.is_subscribed(auth.uid())
+  and trip_id in (select id from public.trips where ended_at is null)
+  and vehicle_id in (
+    select s.vehicle_id from public.students s
+    join public.parent_students ps on ps.student_id = s.id where ps.parent_id = auth.uid())
+);
 
 create policy "driver sees route students" on public.students for select using (
   vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
@@ -199,3 +277,4 @@ grant execute on function public.record_scan(uuid, text) to authenticated;
 
 -- Realtime for the parent "Today" screen (respects RLS).
 alter publication supabase_realtime add table public.scan_events;
+alter publication supabase_realtime add table public.bus_locations;

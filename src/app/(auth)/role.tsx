@@ -1,12 +1,39 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button } from '@/components/ui';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Button, ScreenHeader } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n';
 import type { Role } from '@/lib/types';
-import { colors, radius, spacing } from '@/theme';
+import { colors, fonts, radius, spacing } from '@/theme';
+
+function RoleCard({
+  icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[styles.roleCard, active && styles.roleCardActive]}
+    >
+      <Ionicons name={icon} size={40} color={colors.indigo} />
+      <Text style={styles.roleLabel}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export default function RoleSelect() {
+  const { t, lang, setLang } = useI18n();
   const { completeProfile, signOut } = useAuth();
   const [role, setRole] = useState<Role>('parent');
   const [name, setName] = useState('');
@@ -16,50 +43,61 @@ export default function RoleSelect() {
     setBusy(true);
     const error = await completeProfile(role, name.trim());
     setBusy(false);
-    if (error) Alert.alert('Could not save', error);
+    if (error) Alert.alert(t('errorTitle'), error);
     else router.replace('/');
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Who are you?</Text>
-      <View style={styles.row}>
-        <Button
-          title="Parent"
-          variant={role === 'parent' ? 'primary' : 'secondary'}
-          onPress={() => setRole('parent')}
-          style={{ flex: 1 }}
+      <ScreenHeader title={t('whoAreYou')} />
+      <View style={styles.body}>
+        <View style={styles.row}>
+          <RoleCard icon="people" label={t('parent')} active={role === 'parent'} onPress={() => setRole('parent')} />
+          <RoleCard icon="bus" label={t('driver')} active={role === 'driver'} onPress={() => setRole('driver')} />
+        </View>
+        <Text style={styles.hint}>{role === 'driver' ? t('driverFree') : t('parentHint')}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={t('fullName')}
+          placeholderTextColor={colors.muted}
+          value={name}
+          onChangeText={setName}
+          accessibilityLabel={t('fullName')}
         />
-        <Button
-          title="Driver"
-          variant={role === 'driver' ? 'primary' : 'secondary'}
-          onPress={() => setRole('driver')}
-          style={{ flex: 1 }}
-        />
+        <Button title={t('continue')} loading={busy} disabled={name.trim().length < 2} onPress={submit} />
+        <Button title={lang === 'te' ? 'English' : 'తెలుగు'} variant="secondary" onPress={() => setLang(lang === 'te' ? 'en' : 'te')} />
+        <Button title={t('signOut')} variant="secondary" onPress={signOut} />
       </View>
-      <Text style={styles.hint}>
-        {role === 'driver'
-          ? 'Drivers use SchoolRide free of charge.'
-          : 'Parents get instant boarding alerts with a subscription.'}
-      </Text>
-      <TextInput style={styles.input} placeholder="Full name" value={name} onChangeText={setName} />
-      <Button title="Continue" loading={busy} disabled={name.trim().length < 2} onPress={submit} />
-      <Button title="Sign out" variant="secondary" onPress={signOut} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md, backgroundColor: colors.bg },
-  title: { fontSize: 28, fontWeight: '800', color: colors.ink },
+  container: { flex: 1, backgroundColor: colors.bg },
+  body: { padding: spacing.lg, gap: spacing.md },
   row: { flexDirection: 'row', gap: spacing.md },
-  hint: { color: colors.muted },
-  input: {
+  roleCard: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
     backgroundColor: colors.card,
-    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderWidth: 2,
     borderColor: colors.border,
+  },
+  roleCardActive: { borderColor: colors.primary, backgroundColor: '#FFF3D6' },
+  roleLabel: { fontFamily: fonts.display, fontSize: 20, lineHeight: 28, color: colors.ink },
+  hint: { fontFamily: fonts.body, fontSize: 16, color: colors.muted },
+  input: {
+    height: 56,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: colors.indigo,
     borderRadius: radius.md,
-    padding: 14,
-    fontSize: 16,
+    paddingHorizontal: 14,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 18,
+    color: colors.ink,
   },
 });

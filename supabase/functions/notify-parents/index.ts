@@ -34,8 +34,18 @@ Deno.serve(async (req) => {
     .in('parent_id', parentIds)
     .eq('status', 'active')
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  const paid = (subs ?? []).map((s) => s.parent_id);
-  if (paid.length === 0) return new Response('no subscribed parents', { status: 200 });
+  const paidIds = (subs ?? []).map((s) => s.parent_id);
+  if (paidIds.length === 0) return new Response('no subscribed parents', { status: 200 });
+
+  // Respect each parent's notification settings (Settings → Alerts).
+  const prefColumn = kind === 'board' ? 'notify_board' : 'notify_alight';
+  const { data: wanting } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('id', paidIds)
+    .eq(prefColumn, true);
+  const paid = (wanting ?? []).map((p) => p.id);
+  if (paid.length === 0) return new Response('alerts muted', { status: 200 });
 
   const { data: tokens } = await supabase.from('push_tokens').select('token').in('user_id', paid);
 

@@ -1,126 +1,159 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { useMemo } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PaywallNotice } from '@/components/PaywallNotice';
-import { Card, Empty } from '@/components/ui';
+import { RouteMap } from '@/components/RouteMap';
+import { Avatar, Badge, Button, Empty, ScreenHeader } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
-import type { ScanEvent, ScanKind, Student } from '@/lib/types';
+import { nearestStopIndex } from '@/lib/geo';
+import { useI18n } from '@/lib/i18n';
+import { useParentData, type Child } from '@/lib/useParentData';
 import { useSubscription } from '@/lib/useSubscription';
-import { colors, radius, spacing } from '@/theme';
+import { colors, fonts, radius, spacing } from '@/theme';
 
-interface ChildStatus {
-  student: Student;
-  kind: ScanKind | null;
-  at: string | null;
+/** A location older than this is shown as stale rather than live. */
+const STALE_MS = 2 * 60 * 1000;
+
+function StatusBadge({ kind }: { kind: Child['kind'] }) {
+  const { t } = useI18n();
+  if (kind === 'board') return <Badge tone="green" icon="checkmark" label={t('boarded')} />;
+  if (kind === 'alight') return <Badge tone="indigo" icon="arrow-forward" label={t('gotOff')} />;
+  return <Badge tone="neutral" icon="ellipse-outline" label={t('notBoarded')} />;
 }
 
-function startOfToday(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
+export default function ParentHome() {
+  const { t, lang } = useI18n();
+  const { profile } = useAuth();
+  const { active, loading: subLoading } = useSubscription();
+  const { children, selected, select, route, stops, bus, refreshing, refresh } = useParentData(active);
+  const locale = lang === 'te' ? 'te-IN' : 'en-IN';
 
-export default function ParentToday() {
-  const { session } = useAuth();
-  const { active, loading: subLoading, refresh: refreshSub } = useSubscription();
-  const [children, setChildren] = useState<ChildStatus[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const myStop = stops.find((s) => s.id === selected?.student.stop_id) ?? null;
+  const busAge = bus ? Date.now() - new Date(bus.updated_at).getTime() : Infinity;
+  const live = busAge < STALE_MS;
 
-  const load = useCallback(async () => {
-    if (!session) return;
-    setRefreshing(true);
-    const { data: links } = await supabase
-      .from('parent_students')
-      .select('students(*)')
-      .eq('parent_id', session.user.id);
-    const students = (links ?? []).flatMap((l: any) => (l.students ? [l.students as Student] : []));
-
-    // RLS hides scan events from non-subscribers, so this is empty for them.
-    const { data: events } = await supabase
-      .from('scan_events')
-      .select('student_id, kind, scanned_at')
-      .gte('scanned_at', startOfToday())
-      .order('scanned_at', { ascending: false });
-    const latest = new Map<string, { kind: ScanKind; at: string }>();
-    for (const e of (events ?? []) as Pick<ScanEvent, 'student_id' | 'kind' | 'scanned_at'>[]) {
-      if (!latest.has(e.student_id)) latest.set(e.student_id, { kind: e.kind, at: e.scanned_at });
-    }
-    setChildren(
-      students.map((s) => ({
-        student: s,
-        kind: latest.get(s.id)?.kind ?? null,
-        at: latest.get(s.id)?.at ?? null,
-      })),
-    );
-    setRefreshing(false);
-  }, [session]);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshSub();
-      void load();
-    }, [load, refreshSub]),
-  );
-
-  // Live updates: a scan by the driver shows up here instantly (RLS-filtered per parent).
-  useEffect(() => {
-    if (!active) return;
-    const channel = supabase
-      .channel('scan-events')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scan_events' }, () => {
-        void load();
-      })
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [active, load]);
+  // How many stops until the bus reaches this child's stop (only while it's still ahead).
+  const stopsAway = useMemo(() => {
+    if (!bus || !myStop || stops.length === 0) return null;
+    const diff = myStop.seq - stops[nearestStopIndex(bus, stops)].seq;
+    return diff > 0 ? diff : null;
+  }, [bus, myStop, stops]);
 
   if (subLoading) return null;
-  if (!active) return <PaywallNotice />;
+  if (!active) return <PaywallNotice title={t('todayRide')} />;
+
+  const firstName = profile?.full_name?.split(' ')[0] ?? '';
 
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
-      data={children}
-      keyExtractor={(c) => c.student.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
-      ListEmptyComponent={<Empty text="No children linked to your account yet. Ask your school to link your number." />}
-      ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-      renderItem={({ item }) => {
-        const label =
-          item.kind === 'board' ? 'On board' : item.kind === 'alight' ? 'Got off' : 'Not boarded yet';
-        const color =
-          item.kind === 'board' ? colors.success : item.kind === 'alight' ? colors.info : colors.muted;
-        return (
-          <Card style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{item.student.full_name}</Text>
-              <Text style={styles.muted}>{item.student.school_name}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={[styles.badge, { backgroundColor: color }]}>{label}</Text>
-              {item.at && <Text style={styles.muted}>{new Date(item.at).toLocaleTimeString()}</Text>}
-            </View>
-          </Card>
-        );
-      }}
-    />
+    <View style={styles.container}>
+      <ScreenHeader title={t('todayRide')} subtitle={`${t('hello')}, ${firstName}`} />
+
+      <View style={styles.mapWrap}>
+        <RouteMap route={route} stops={stops} bus={live ? bus : null} myStopId={myStop?.id} bottomInset={230} />
+
+        <View style={styles.sheet}>
+          {children.length === 0 || !selected ? (
+            <Empty text={t('noChildren')} />
+          ) : (
+            <ScrollView
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+              contentContainerStyle={{ gap: spacing.md }}
+            >
+              {children.length > 1 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+                  {children.map((c) => {
+                    const on = c.student.id === selected.student.id;
+                    return (
+                      <Pressable
+                        key={c.student.id}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => select(c.student.id)}
+                        style={[styles.chip, on && styles.chipOn]}
+                      >
+                        <Text style={[styles.chipText, on && { color: colors.ink }]}>
+                          {c.student.full_name.split(' ')[0]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              <View style={styles.childRow}>
+                <Avatar name={selected.student.full_name} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{selected.student.full_name}</Text>
+                  <Text style={styles.muted}>
+                    {selected.vehicle?.reg_number ?? ''}
+                    {myStop ? ` · ${t('yourStop')}: ${myStop.name}` : ''}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.statusRow}>
+                <StatusBadge kind={selected.kind} />
+                {selected.at && (
+                  <Text style={styles.muted}>{new Date(selected.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</Text>
+                )}
+              </View>
+
+              <View style={styles.busLine}>
+                <View style={[styles.dot, { backgroundColor: live ? colors.green : colors.border }]} />
+                <Text style={styles.busText}>
+                  {live
+                    ? `${t('busOnWay')}${stopsAway ? ` · ${stopsAway} ${t('stopsAway')}` : ''}`
+                    : bus
+                      ? `${t('lastSeen')} ${new Date(bus.updated_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`
+                      : t('busNotStarted')}
+                </Text>
+              </View>
+
+              <Button
+                title={t('openChild')}
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/child/[id]', params: { id: selected.student.id } })}
+              />
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { fontSize: 17, fontWeight: '700', color: colors.ink },
-  muted: { color: colors.muted, marginTop: 2 },
-  badge: {
-    color: '#fff',
-    fontWeight: '700',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
+  container: { flex: 1, backgroundColor: colors.bg },
+  mapWrap: { flex: 1 },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '58%',
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderTopWidth: 3,
+    borderColor: colors.primary,
+    padding: spacing.md,
   },
+  chip: {
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: colors.indigo,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipOn: { backgroundColor: colors.primary },
+  chipText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.indigo },
+  childRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  name: { fontFamily: fonts.display, fontSize: 21, lineHeight: 28, color: colors.ink },
+  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  busLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dot: { width: 12, height: 12, borderRadius: 6 },
+  busText: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.ink, flex: 1 },
 });
