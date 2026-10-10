@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, ScreenHeader } from '@/components/ui';
@@ -44,7 +43,6 @@ export default function RoleSelect() {
     const error = await completeProfile(role, name.trim());
     setBusy(false);
     if (error) Alert.alert(t('errorTitle'), error);
-    else router.replace('/');
   }
 
   return (

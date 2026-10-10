@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -85,7 +84,8 @@ export default function Login() {
             title={t('verify')}
             loading={busy}
             disabled={code.length < 6}
-            onPress={() => run(() => verifyOtp(phone, code), () => router.replace('/'))}
+            // AuthGate moves the user on once the session arrives.
+            onPress={() => run(() => verifyOtp(phone, code), () => undefined)}
           />
         ) : (
           <Button

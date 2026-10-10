@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     body,
     sound: 'default',
     channelId: 'boarding',
+    data: { student_id },
     priority: 'high',
   }));
 

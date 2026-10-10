@@ -1,4 +1,5 @@
-import { Redirect } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { Redirect, router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import { useEffect } from 'react';
 import { tabIcon, tabScreenOptions } from '@/components/tabBar';
@@ -16,6 +17,22 @@ export default function ParentLayout() {
     configurePurchases(session.user.id);
     void registerForPush(session.user.id);
   }, [session]);
+
+  // Tapping a boarding alert opens that child's detail (or Home if no child id is attached).
+  useEffect(() => {
+    const open = (data: Record<string, unknown> | undefined) => {
+      const id = typeof data?.student_id === 'string' ? data.student_id : null;
+      if (id) router.push({ pathname: '/child/[id]', params: { id } });
+      else router.navigate('/(parent)');
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener((r) =>
+      open(r.notification.request.content.data),
+    );
+    // App opened cold from a notification tap.
+    const last = Notifications.getLastNotificationResponse();
+    if (last) open(last.notification.request.content.data);
+    return () => sub.remove();
+  }, []);
 
   if (profile && profile.role !== 'parent') return <Redirect href="/" />;
 

@@ -26,26 +26,35 @@ export function toE164(input: string): string {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const userId = session?.user.id;
 
-  const loadProfile = useCallback(async (userId: string | undefined) => {
-    if (!userId) return setProfile(null);
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  const loadProfile = useCallback(async (id: string | undefined) => {
+    if (!id) return setProfile(null);
+    const { data } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
     setProfile((data as Profile | null) ?? null);
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      await loadProfile(data.session?.user.id);
-      setLoading(false);
+      setSessionReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-      loadProfile(next?.user.id);
-    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
     return () => sub.subscription.unsubscribe();
-  }, [loadProfile]);
+  }, []);
+
+  // Profile loads in its own effect (not inside the auth callback) and `loading` stays true
+  // until it settles, so route guards never see "signed in, no profile" by mistake.
+  useEffect(() => {
+    if (!sessionReady) return;
+    if (!userId) return setProfile(null);
+    setProfileLoading(true);
+    void loadProfile(userId).finally(() => setProfileLoading(false));
+  }, [sessionReady, userId, loadProfile]);
+
+  const loading = !sessionReady || profileLoading;
 
   const value = useMemo<AuthState>(
     () => ({
