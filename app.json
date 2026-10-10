@@ -1,17 +1,30 @@
 {
   "expo": {
-    "name": "trackerthing-tmp",
-    "slug": "trackerthing-tmp",
+    "name": "SchoolRide",
+    "slug": "school-ride-tracker",
+    "scheme": "schoolride",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFB703"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "in.schoolride.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "SchoolRide uses the camera to scan student ID cards."
+      }
     },
     "android": {
+      "package": "in.schoolride.app",
+      "permissions": ["CAMERA", "POST_NOTIFICATIONS"],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFB703",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +33,19 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        { "cameraPermission": "Allow SchoolRide to use the camera to scan student ID cards." }
+      ],
+      ["expo-notifications", { "color": "#FFB703" }]
+    ],
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "eas": { "projectId": "REPLACE_WITH_EAS_PROJECT_ID" }
     }
   }
 }
