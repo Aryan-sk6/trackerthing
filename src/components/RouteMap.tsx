@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, type LatLng } from 'react-native-maps';
 import type { BusLocation, BusRoute, RouteStop } from '@/lib/types';
+import { useI18n } from '@/lib/i18n';
 import { colors, fonts } from '@/theme';
 
-/** Hyderabad, used until a route is loaded. */
-const FALLBACK = { latitude: 17.385, longitude: 78.4867, latitudeDelta: 0.2, longitudeDelta: 0.2 };
+/** Whole-world view until a route loads; the map then fits the route. */
+const FALLBACK = { latitude: 20, longitude: 0, latitudeDelta: 100, longitudeDelta: 100 };
 
 export function RouteMap({
   route,
@@ -22,6 +23,7 @@ export function RouteMap({
   bottomInset?: number;
 }) {
   const ref = useRef<MapView>(null);
+  const { t } = useI18n();
 
   const path = useMemo<LatLng[]>(
     () => (route?.path ?? []).map(([latitude, longitude]) => ({ latitude, longitude })),
@@ -51,13 +53,13 @@ export function RouteMap({
       initialRegion={FALLBACK}
       toolbarEnabled={false}
       showsCompass={false}
-      accessibilityLabel="Bus route map"
+      accessibilityLabel={t('mapLabel')}
     >
       {path.length > 1 && (
         <>
-          {/* White casing under the indigo line keeps the route readable on any map style. */}
+          {/* White casing under the brand-coloured line keeps the route readable on any map style. */}
           <Polyline coordinates={path} strokeColor="#fff" strokeWidth={9} />
-          <Polyline coordinates={path} strokeColor={colors.indigo} strokeWidth={5} />
+          <Polyline coordinates={path} strokeColor={colors.brand} strokeWidth={5} />
         </>
       )}
 
@@ -74,7 +76,7 @@ export function RouteMap({
           >
             <View style={[styles.stop, mine && styles.stopMine]}>
               {mine ? (
-                <Ionicons name="home" size={14} color={colors.ink} />
+                <Ionicons name="home" size={15} color={colors.onBrand} />
               ) : (
                 <Text style={styles.stopNum}>{s.seq}</Text>
               )}
@@ -107,7 +109,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     backgroundColor: colors.card,
     borderWidth: 3,
-    borderColor: colors.indigo,
+    borderColor: colors.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -115,17 +117,22 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: colors.primary,
-    borderColor: colors.indigo,
+    backgroundColor: colors.brand,
+    borderColor: colors.card,
   },
-  stopNum: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.indigo },
+  stopNum: { ...fonts.bodyBold, fontSize: 12, color: colors.brand },
   bus: {
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: colors.primary,
-    borderWidth: 4,
-    borderColor: colors.indigo,
+    backgroundColor: colors.bus,
+    borderWidth: 3,
+    borderColor: colors.card,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },

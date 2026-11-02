@@ -2,22 +2,20 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Avatar, Button, Card, ScreenHeader, SectionTitle, Segmented, SettingsGroup, SettingsRow } from '@/components/ui';
-import { useAuth } from '@/lib/auth';
-import { useI18n, type Lang } from '@/lib/i18n';
+import { Avatar, Card, LanguagePicker, ScreenHeader, SectionTitle, SettingsGroup, SettingsRow } from '@/components/ui';
+import { isGuest, useAuth } from '@/lib/auth';
+import { links } from '@/lib/config';
+import { DEMO_STUDENT, demoVehicle } from '@/lib/demo';
+import { languages, useI18n, type Lang } from '@/lib/i18n';
 import { useShareLocation } from '@/lib/prefs';
 import { supabase } from '@/lib/supabase';
 import type { Student, Vehicle } from '@/lib/types';
 import { colors, fonts, spacing } from '@/theme';
 
-// TODO: replace with the operator's real support number and policy URL before launch.
-const SUPPORT_PHONE = '+910000000000';
-const PRIVACY_URL = 'https://example.com/privacy';
-
 /** One settings screen for both roles; role-specific sections are switched on `profile.role`. */
 export function SettingsScreen() {
-  const { t, lang, setLang } = useI18n();
-  const { profile, updateProfile, signOut } = useAuth();
+  const { t } = useI18n();
+  const { profile, updateProfile, signOut, deleteAccount } = useAuth();
   const [shareLocation, setShareLocation] = useShareLocation();
   const [children, setChildren] = useState<Student[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
@@ -27,22 +25,48 @@ export function SettingsScreen() {
   useEffect(() => {
     if (!profile) return;
     if (isDriver) {
-      supabase.from('vehicles').select('*').maybeSingle().then(({ data }) => setVehicle(data as Vehicle | null));
+      supabase.from('vehicles').select('*').maybeSingle().then(({ data }) => {
+        if (data) {
+          setVehicle(data as Vehicle | null);
+        } else if (isGuest(profile.id)) {
+          setVehicle(demoVehicle(profile.full_name));
+        }
+      });
     } else {
       supabase
         .from('parent_students')
         .select('students(*)')
         .eq('parent_id', profile.id)
-        .then(({ data }) =>
-          setChildren((data ?? []).flatMap((l: any) => (l.students ? [l.students as Student] : []))),
-        );
+        .then(({ data }) => {
+          const list = ((data ?? []) as unknown as { students: Student | null }[]).flatMap((l) =>
+            l.students ? [l.students] : [],
+          );
+          if (list.length > 0) {
+            setChildren(list);
+          } else if (isGuest(profile.id)) {
+            setChildren([DEMO_STUDENT]);
+          }
+        });
     }
   }, [profile, isDriver]);
 
   // Language is stored per device (instant) and on the profile (so push text can follow it).
   function changeLang(l: Lang) {
-    setLang(l);
     void updateProfile({ language: l });
+  }
+
+  function confirmDelete() {
+    Alert.alert(t('deleteAccount'), t('deleteAccountBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('deleteConfirm'),
+        style: 'destructive',
+        onPress: async () => {
+          const error = await deleteAccount();
+          if (error) Alert.alert(t('errorTitle'), error);
+        },
+      },
+    ]);
   }
 
   async function toggle(field: 'notify_board' | 'notify_alight', value: boolean) {
@@ -67,15 +91,8 @@ export function SettingsScreen() {
           </View>
         </Card>
 
-        <SectionTitle>{t('language')}</SectionTitle>
-        <Segmented
-          value={lang}
-          onChange={changeLang}
-          options={[
-            { value: 'te', label: 'తెలుగు' },
-            { value: 'en', label: 'English' },
-          ]}
-        />
+        {languages.length > 1 && <SectionTitle>{t('language')}</SectionTitle>}
+        <LanguagePicker onChange={changeLang} />
 
         {isDriver ? (
           <>
@@ -130,12 +147,25 @@ export function SettingsScreen() {
 
         <SectionTitle>{t('help')}</SectionTitle>
         <SettingsGroup>
-          <SettingsRow icon="call-outline" label={t('help')} onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)} />
-          <SettingsRow icon="shield-checkmark-outline" label={t('privacy')} onPress={() => Linking.openURL(PRIVACY_URL)} />
+          {links.support && (
+            <SettingsRow icon="help-circle-outline" label={t('help')} onPress={() => Linking.openURL(links.support!)} />
+          )}
+          {links.privacy && (
+            <SettingsRow icon="shield-checkmark-outline" label={t('privacy')} onPress={() => Linking.openURL(links.privacy!)} />
+          )}
+          {links.terms && (
+            <SettingsRow icon="document-text-outline" label={t('terms')} onPress={() => Linking.openURL(links.terms!)} />
+          )}
           <SettingsRow icon="information-circle-outline" label={t('version')} value={Constants.expoConfig?.version ?? '1.0.0'} />
         </SettingsGroup>
 
-        <Button title={t('signOut')} variant="secondary" onPress={signOut} style={{ marginTop: spacing.lg }} />
+        <SectionTitle>{t('account')}</SectionTitle>
+        <SettingsGroup>
+          <SettingsRow icon="log-out-outline" label={t('signOut')} onPress={signOut} />
+          {!isGuest(profile.id) && (
+            <SettingsRow icon="trash-outline" label={t('deleteAccount')} destructive onPress={confirmDelete} />
+          )}
+        </SettingsGroup>
       </ScrollView>
     </View>
   );
@@ -145,6 +175,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.md, paddingBottom: spacing.xl },
   profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { fontFamily: fonts.display, fontSize: 22, lineHeight: 30, color: colors.ink },
-  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted },
+  name: { ...fonts.display, fontSize: 22, color: colors.ink },
+  muted: { ...fonts.body, fontSize: 14, color: colors.muted },
 });

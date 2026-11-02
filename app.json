@@ -7,22 +7,17 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#23306B"
-    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "in.schoolride.app",
+      "bundleIdentifier": "com.example.schoolride",
       "infoPlist": {
-        "NSCameraUsageDescription": "SchoolRide uses the camera to scan student ID cards.",
-        "NSLocationWhenInUseUsageDescription": "SchoolRide shares this phone's location with parents while a trip is running."
+        "NSCameraUsageDescription": "SchoolRide uses the camera to scan student ID cards when they get on and off the bus.",
+        "NSLocationWhenInUseUsageDescription": "While you run a trip, SchoolRide shares this phone's location with the parents of children on your bus. Sharing stops when the trip ends.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "in.schoolride.app",
+      "package": "com.example.schoolride",
       "permissions": [
         "CAMERA",
         "POST_NOTIFICATIONS",
@@ -30,17 +25,12 @@
         "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#23306B",
+        "backgroundColor": "#F5B400",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "config": {
-        "googleMaps": {
-          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_API_KEY"
-        }
-      }
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -51,29 +41,33 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow SchoolRide to use the camera to scan student ID cards."
+          "cameraPermission": "SchoolRide uses the camera to scan student ID cards when they get on and off the bus."
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#23306B"
+          "color": "#2459E0"
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SchoolRide shares this phone's location with parents while a trip is running."
+          "locationWhenInUsePermission": "While you run a trip, SchoolRide shares this phone's location with the parents of children on your bus. Sharing stops when the trip ends."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F6F8",
+          "imageWidth": 200
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
-      }
     }
   }
 }

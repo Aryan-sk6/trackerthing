@@ -3,7 +3,7 @@ import { Redirect, router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import { useEffect } from 'react';
 import { tabIcon, tabScreenOptions } from '@/components/tabBar';
-import { useAuth } from '@/lib/auth';
+import { isGuest, useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { registerForPush } from '@/lib/notifications';
 import { configurePurchases } from '@/lib/purchases';
@@ -13,7 +13,8 @@ export default function ParentLayout() {
   const { profile, session } = useAuth();
 
   useEffect(() => {
-    if (!session) return;
+    // Demo mode has no server account: a shared RevenueCat id would pool purchases across devices.
+    if (!session || isGuest(session.user.id)) return;
     configurePurchases(session.user.id);
     void registerForPush(session.user.id);
   }, [session]);

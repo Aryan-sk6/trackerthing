@@ -1,6 +1,5 @@
 import { Redirect } from 'expo-router';
-import { View } from 'react-native';
-import { Kamalam } from '@/components/motifs';
+import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '@/lib/auth';
 import { colors } from '@/theme';
 
@@ -10,7 +9,7 @@ export default function Index() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <Kamalam size={56} />
+        <ActivityIndicator size="large" color={colors.brand} />
       </View>
     );
   }

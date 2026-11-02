@@ -3,6 +3,8 @@ import { useCallback, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { PaywallNotice } from '@/components/PaywallNotice';
 import { Badge, Card, Empty, ScreenHeader } from '@/components/ui';
+import { isGuest, useAuth } from '@/lib/auth';
+import { demoScanEvents } from '@/lib/demo';
 import { useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import type { ScanEvent } from '@/lib/types';
@@ -10,8 +12,8 @@ import { useSubscription } from '@/lib/useSubscription';
 import { colors, fonts, spacing } from '@/theme';
 
 export default function TravelLog() {
-  const { t, lang } = useI18n();
-  const locale = lang === 'te' ? 'te-IN' : 'en-IN';
+  const { t, locale } = useI18n();
+  const { session } = useAuth();
   const { active, loading: subLoading } = useSubscription();
   const [events, setEvents] = useState<ScanEvent[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,9 +25,15 @@ export default function TravelLog() {
       .select('*, students(full_name, school_name)')
       .order('scanned_at', { ascending: false })
       .limit(200);
-    setEvents((data as ScanEvent[]) ?? []);
+    if (data && data.length > 0) {
+      setEvents(data as ScanEvent[]);
+    } else if (isGuest(session?.user.id)) {
+      setEvents(demoScanEvents());
+    } else {
+      setEvents([]);
+    }
     setRefreshing(false);
-  }, []);
+  }, [session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,12 +58,12 @@ export default function TravelLog() {
           <Card style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{item.students?.full_name}</Text>
-              <Text style={styles.muted}>{new Date(item.scanned_at).toLocaleString(locale)}</Text>
+              <Text style={styles.muted}>{new Date(item.scanned_at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}</Text>
             </View>
             {item.kind === 'board' ? (
-              <Badge tone="green" icon="checkmark" label={t('boarded')} />
+              <Badge tone="success" icon="checkmark" label={t('boarded')} />
             ) : (
-              <Badge tone="indigo" icon="arrow-forward" label={t('gotOff')} />
+              <Badge tone="brand" icon="arrow-forward" label={t('gotOff')} />
             )}
           </Card>
         )}
@@ -68,6 +76,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   list: { padding: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  title: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.ink },
-  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 },
+  title: { ...fonts.bodyBold, fontSize: 17, color: colors.ink },
+  muted: { ...fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 },
 });

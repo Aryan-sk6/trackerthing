@@ -1,116 +1,41 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-export type Lang = 'te' | 'en';
-
-const te = {
-  appName: 'స్కూల్‌రైడ్',
-  tagline: 'బడి బస్సు, భద్రంగా',
-  welcomeTitle: 'మీ బిడ్డ భద్రత, క్షణాల్లో',
-  welcomeBody: 'తెలంగాణ స్కూల్ బస్సుల కోసం. డ్రైవర్లకు ఉచితం.',
-  getStarted: 'ప్రారంభించండి',
-  mobileNumber: 'మొబైల్ నంబర్',
-  sendOtp: 'OTP పంపండి',
-  enterOtp: '6 అంకెల OTP',
-  verify: 'ధృవీకరించి కొనసాగండి',
-  whoAreYou: 'మీరు ఎవరు?',
-  parent: 'తల్లిదండ్రులు',
-  driver: 'డ్రైవర్',
-  fullName: 'పూర్తి పేరు',
-  continue: 'కొనసాగండి',
-  signOut: 'సైన్ అవుట్',
-  driverFree: 'డ్రైవర్లకు యాప్ ఉచితం.',
-  parentHint: 'చందాతో బస్సు ఎక్కిన క్షణంలోనే సమాచారం.',
-  // tabs
-  tabTrip: 'ట్రిప్',
-  tabStudents: 'విద్యార్థులు',
-  tabHistory: 'చరిత్ర',
-  tabSettings: 'సెట్టింగ్స్',
-  tabHome: 'హోమ్',
-  tabLog: 'లాగ్',
-  tabPlan: 'ప్లాన్',
-  // driver trip
-  startTrip: 'ట్రిప్ ప్రారంభించండి',
-  startTripBody: 'మీరు ID కార్డ్ స్కాన్ చేసిన క్షణమే తల్లిదండ్రులకు సమాచారం వెళ్తుంది.',
-  morningPickup: 'ఉదయం పికప్',
-  eveningDrop: 'సాయంత్రం డ్రాప్',
-  endTrip: 'ట్రిప్ ముగించండి',
-  keepCardInFrame: 'ID కార్డును ఫ్రేమ్‌లో ఉంచండి',
-  cameraNeeded: 'కెమెరా అనుమతి కావాలి',
-  allowCamera: 'కెమెరా అనుమతించండి',
-  boarded: 'ఎక్కాడు',
-  gotOff: 'దిగాడు',
-  notBoarded: 'ఇంకా రాలేదు',
-  onBoardCount: 'ఎక్కినవారు',
-  noVehicle: 'వాహనం కేటాయించలేదు',
-  noVehicleBody: 'మీ స్కూల్ అడ్మిన్‌ను వాహనం కేటాయించమని అడగండి.',
-  sharingLocation: 'లొకేషన్ షేర్ అవుతోంది',
-  // parent home
-  hello: 'నమస్కారం',
-  todayRide: 'ఈ రోజు ప్రయాణం',
-  busOnWay: 'బస్సు దారిలో ఉంది',
-  busNotStarted: 'బస్సు ఇంకా బయలుదేరలేదు',
-  lastSeen: 'చివరిగా',
-  stopsAway: 'స్టాప్‌లు దూరం',
-  yourStop: 'మీ స్టాప్',
-  noChildren: 'మీ ఖాతాకు పిల్లలు లింక్ కాలేదు. మీ స్కూల్‌ను సంప్రదించండి.',
-  openChild: 'వివరాలు చూడండి',
-  scanNotGps: 'బస్సు స్థానం డ్రైవర్ ఫోన్ నుండి, ఎక్కడం ID కార్డ్ స్కాన్ నుండి వస్తుంది.',
-  // paywall
-  subscribeTitle: 'బస్సు ఎక్కగానే నోటిఫికేషన్',
-  perkAlerts: 'ID కార్డ్ స్కాన్ అయిన క్షణమే అలర్ట్',
-  perkMap: 'మ్యాప్‌లో బస్సు ఎక్కడుందో చూడండి',
-  perkLog: 'హాజరు మరియు పూర్తి ప్రయాణ చరిత్ర',
-  subscribe: 'చందా తీసుకోండి',
-  restore: 'కొనుగోళ్లను పునరుద్ధరించండి',
-  planActive: 'చందా చురుగ్గా ఉంది',
-  noPlan: 'ప్లాన్ లేదు',
-  viewPlans: 'ప్లాన్లు చూడండి',
-  // settings
-  settings: 'సెట్టింగ్స్',
-  profile: 'ప్రొఫైల్',
-  language: 'భాష',
-  alerts: 'అలర్ట్లు',
-  alertBoard: 'బస్సు ఎక్కినప్పుడు',
-  alertAlight: 'బస్సు దిగినప్పుడు',
-  myChildren: 'నా పిల్లలు',
-  vehicle: 'వాహనం',
-  locationSharing: 'లొకేషన్ షేరింగ్',
-  locationSharingBody: 'ట్రిప్ సమయంలో మీ ఫోన్ లొకేషన్ తల్లిదండ్రులకు కనిపిస్తుంది.',
-  help: 'సహాయం',
-  privacy: 'గోప్యతా విధానం',
-  version: 'వెర్షన్',
-  // history
-  noRecords: 'ఇంకా రికార్డులు లేవు.',
-  attendance: 'హాజరు',
-  present: 'హాజరు',
-  absent: 'గైర్హాజరు',
-  tripsThisMonth: 'ఈ నెల ట్రిప్పులు',
-  firstBoarded: 'మొదట ఎక్కింది',
-  lastAlighted: 'చివరగా దిగింది',
-  errorTitle: 'ఏదో తప్పు జరిగింది',
-  cancel: 'రద్దు',
-  save: 'సేవ్',
-};
-
-const en: typeof te = {
+/**
+ * English is the base dictionary; every other language must provide the same keys
+ * (TypeScript enforces this). To add a language:
+ *   1. add `const xx: Dictionary = { ... }` below (or in its own file),
+ *   2. register it in `dictionaries` with its native name in `languageNames`.
+ * The language picker appears automatically once more than one language is registered.
+ */
+const en = {
   appName: 'SchoolRide',
-  tagline: 'School bus, made safe',
+  tagline: 'Know where the school bus is',
   welcomeTitle: 'Know the moment your child boards',
-  welcomeBody: 'Built for Telangana school transport. Free for drivers.',
+  welcomeBody: 'Drivers scan student ID cards; parents get an alert and see the bus on a map. Free for drivers.',
   getStarted: 'Get started',
+  tryDemo: 'Try the demo',
+  demoBanner: 'Demo mode: sample data, nothing is saved to a server.',
   mobileNumber: 'Mobile number',
-  sendOtp: 'Send OTP',
-  enterOtp: '6-digit OTP',
+  countryCode: 'Country code',
+  phoneHint: 'Include your country code, e.g. +44 7700 900123.',
+  sendOtp: 'Send code',
+  enterOtp: '6-digit code',
+  codeSentTo: 'Code sent to',
+  changeNumber: 'Change number',
   verify: 'Verify & continue',
+  backendMissing: 'Backend not configured. Copy .env.example to .env and add your Supabase keys, or try the demo.',
   whoAreYou: 'Who are you?',
   parent: 'Parent',
   driver: 'Driver',
   fullName: 'Full name',
   continue: 'Continue',
+  skip: 'Skip',
+  back: 'Back',
   signOut: 'Sign out',
   driverFree: 'Drivers use SchoolRide free of charge.',
   parentHint: 'Subscribe to be alerted the moment your child boards.',
+  // tabs
   tabTrip: 'Trip',
   tabStudents: 'Students',
   tabHistory: 'History',
@@ -118,14 +43,16 @@ const en: typeof te = {
   tabHome: 'Home',
   tabLog: 'Log',
   tabPlan: 'Plan',
+  // driver trip
   startTrip: 'Start a trip',
   startTripBody: "Parents are alerted the moment you scan their child's ID card.",
   morningPickup: 'Morning pickup',
-  eveningDrop: 'Evening drop',
+  eveningDrop: 'Afternoon drop-off',
   endTrip: 'End trip',
   keepCardInFrame: 'Hold the ID card in the frame',
-  cameraNeeded: 'Camera access needed',
-  allowCamera: 'Allow camera',
+  cameraNeeded: 'The camera is used to scan student ID cards.',
+  cameraBlocked: 'Camera access is off. Turn it on in Settings to scan cards.',
+  openSettings: 'Open Settings',
   boarded: 'On board',
   gotOff: 'Got off',
   notBoarded: 'Not boarded yet',
@@ -133,6 +60,8 @@ const en: typeof te = {
   noVehicle: 'No vehicle assigned',
   noVehicleBody: 'Ask your school admin to assign a vehicle.',
   sharingLocation: 'Sharing location',
+  scans: 'scans',
+  // parent home
   hello: 'Hello',
   todayRide: "Today's ride",
   busOnWay: 'Bus is on its way',
@@ -143,6 +72,8 @@ const en: typeof te = {
   noChildren: 'No children linked to your account yet. Contact your school.',
   openChild: 'View details',
   scanNotGps: 'Position comes from the driver’s phone and ID card scans.',
+  mapLabel: 'Bus route map',
+  // paywall
   subscribeTitle: 'Get alerts the moment they board',
   perkAlerts: 'Instant alert when the ID card is scanned',
   perkMap: 'See where the bus is on the map',
@@ -150,8 +81,22 @@ const en: typeof te = {
   subscribe: 'Subscribe',
   restore: 'Restore purchases',
   planActive: 'Subscription active',
+  renews: 'Renews or ends on',
   noPlan: 'No active plan',
+  perDay: 'per day',
+  perWeek: 'per week',
+  perMonth: 'per month',
+  perYear: 'per year',
+  everyNDays: 'every {n} days',
+  everyNWeeks: 'every {n} weeks',
+  everyNMonths: 'every {n} months',
+  everyNYears: 'every {n} years',
   viewPlans: 'View plans',
+  iapUnavailable: 'In-app purchases are unavailable in this build. Use a development build with RevenueCat keys configured.',
+  autoRenewTerms:
+    'Payment is charged to your app store account. The subscription renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel it in your store account settings.',
+  terms: 'Terms of use',
+  // settings
   settings: 'Settings',
   profile: 'Profile',
   language: 'Language',
@@ -165,6 +110,12 @@ const en: typeof te = {
   help: 'Help',
   privacy: 'Privacy policy',
   version: 'Version',
+  account: 'Account',
+  deleteAccount: 'Delete account',
+  deleteAccountBody:
+    'This permanently deletes your profile, alert settings and push tokens. Trip and attendance records kept by your school are not linked to you any more. This cannot be undone.',
+  deleteConfirm: 'Delete',
+  // history
   noRecords: 'No records yet.',
   attendance: 'Attendance',
   present: 'Present',
@@ -173,28 +124,57 @@ const en: typeof te = {
   firstBoarded: 'First boarded',
   lastAlighted: 'Last got off',
   errorTitle: 'Something went wrong',
+  loadFailed: 'Could not load. Pull down to try again.',
   cancel: 'Cancel',
   save: 'Save',
 };
 
-export type TKey = keyof typeof te;
-const dictionaries: Record<Lang, Record<TKey, string>> = { te, en };
+export type TKey = keyof typeof en;
+export type Dictionary = Record<TKey, string>;
+
+const dictionaries = { en } satisfies Record<string, Dictionary>;
+export type Lang = keyof typeof dictionaries;
+
+/** Native names shown in the language picker. */
+export const languageNames: Record<Lang, string> = { en: 'English' };
+export const languages = Object.keys(dictionaries) as Lang[];
+
 const STORAGE_KEY = 'schoolride.lang';
+
+/** Device locale (e.g. "en-GB", "pt-BR"); used for date/time formatting in every language. */
+export const deviceLocale: string = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().locale || 'en';
+  } catch {
+    return 'en';
+  }
+})();
+
+function isLang(v: unknown): v is Lang {
+  return typeof v === 'string' && v in dictionaries;
+}
+
+function defaultLang(): Lang {
+  const base = deviceLocale.split('-')[0];
+  return isLang(base) ? base : 'en';
+}
 
 interface I18n {
   lang: Lang;
   setLang: (l: Lang) => void;
   t: (key: TKey) => string;
+  /** BCP 47 locale for toLocale*String calls. */
+  locale: string;
 }
 
 const I18nContext = createContext<I18n | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('te');
+  const [lang, setLangState] = useState<Lang>(defaultLang);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((v) => v === 'te' || v === 'en' ? setLangState(v) : undefined)
+      .then((v) => (isLang(v) ? setLangState(v) : undefined))
       .catch(() => undefined);
   }, []);
 
@@ -203,10 +183,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, l).catch(() => undefined);
   }, []);
 
-  const value = useMemo<I18n>(
-    () => ({ lang, setLang, t: (key) => dictionaries[lang][key] }),
-    [lang, setLang],
-  );
+  const value = useMemo<I18n>(() => {
+    const dict: Dictionary = dictionaries[lang];
+    // Keep the device's regional formats when its language matches; otherwise format in the chosen language.
+    const locale = deviceLocale.split('-')[0] === lang ? deviceLocale : lang;
+    return { lang, setLang, t: (key) => dict[key] ?? en[key], locale };
+  }, [lang, setLang]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 

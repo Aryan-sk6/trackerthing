@@ -6,9 +6,9 @@ import { colors, fonts } from '@/theme';
 
 export const tabScreenOptions: NonNullable<ComponentProps<typeof Tabs>['screenOptions']> = {
   headerShown: false,
-  tabBarActiveTintColor: colors.indigo,
+  tabBarActiveTintColor: colors.brand,
   tabBarInactiveTintColor: colors.muted,
-  tabBarLabelStyle: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  tabBarLabelStyle: { ...fonts.bodyBold, fontSize: 13 },
   tabBarStyle: {
     backgroundColor: colors.card,
     borderTopColor: colors.border,
@@ -19,7 +19,8 @@ export const tabScreenOptions: NonNullable<ComponentProps<typeof Tabs>['screenOp
 };
 
 export function tabIcon(name: keyof typeof Ionicons.glyphMap, focusedName: keyof typeof Ionicons.glyphMap) {
-  return ({ color, focused }: { color: ColorValue; focused: boolean }) => (
-    <Ionicons name={focused ? focusedName : name} size={26} color={color} />
-  );
+  function TabIcon({ color, focused }: { color: ColorValue; focused: boolean }) {
+    return <Ionicons name={focused ? focusedName : name} size={26} color={color} />;
+  }
+  return TabIcon;
 }

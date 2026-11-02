@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
 
   const { data: student } = await supabase
     .from('students')
-    .select('full_name, parent_students(parent_id)')
+    .select('full_name, parent_students(parent_id), vehicles(timezone)')
     .eq('id', student_id)
     .single();
   if (!student) return new Response('student not found', { status: 404 });
@@ -49,10 +49,12 @@ Deno.serve(async (req) => {
 
   const { data: tokens } = await supabase.from('push_tokens').select('token').in('user_id', paid);
 
-  const time = new Date(scanned_at).toLocaleTimeString('en-IN', {
-    hour: '2-digit',
+  // Shown in the school's own time zone, whatever region the server runs in.
+  const timeZone: string = (student as any).vehicles?.timezone ?? 'UTC';
+  const time = new Date(scanned_at).toLocaleTimeString('en', {
+    hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'Asia/Kolkata',
+    timeZone,
   });
   const body =
     kind === 'board'
@@ -76,6 +78,15 @@ Deno.serve(async (req) => {
       body: JSON.stringify(messages),
     });
     if (!res.ok) return new Response(await res.text(), { status: 502 });
+
+    // Forget tokens for uninstalled apps so they aren't retried on every scan.
+    const { data: tickets } = await res.json();
+    const dead = (tickets ?? [])
+      .map((ticket: any, i: number) =>
+        ticket?.details?.error === 'DeviceNotRegistered' ? messages[i].to : null,
+      )
+      .filter(Boolean);
+    if (dead.length > 0) await supabase.from('push_tokens').delete().in('token', dead);
   }
   return new Response('ok');
 });

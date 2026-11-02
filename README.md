@@ -1,46 +1,45 @@
 # SchoolRide
 
-Expo (React Native, SDK 57) app for private school transport in Telangana.
+Open-source school bus tracker built with Expo (React Native, SDK 57) and Supabase.
 
-- **Drivers** (free): start a morning/evening trip, scan student ID cards (QR/barcode) with the camera. Each scan toggles *board* / *alight* and is logged against the trip.
-- **Parents** (paid, in‑app subscription): get a push notification the moment their child's card is scanned, see the route and the bus's current position on a map, live on‑board status, attendance and the travel log. The bus position is reported by the **driver's phone** during a trip (no GPS tracker hardware); boarding comes from ID-card scans.
+- **Drivers** (free) start a morning or afternoon trip and scan student ID cards (QR or barcode) with the phone camera. Each scan toggles *boarded* / *got off*.
+- **Parents** (optional in-app subscription) get a push alert when their child's card is scanned, see the bus on a map with the route and stops, and view attendance and a travel log.
+- The bus position comes from the **driver's phone** during a trip, so no GPS hardware is needed.
+- **Demo mode** ("Try the demo") shows sample data with no backend, which is useful for evaluation and app review.
 
 ## Stack
-- Expo Router (`src/app`), TypeScript
-- Supabase: phone OTP auth, Postgres + RLS, Realtime, Edge Functions
-- RevenueCat (`react-native-purchases`) for App Store / Play subscriptions
-- Expo Notifications (push), expo-camera (scanner)
+Expo Router, TypeScript, Supabase (phone OTP auth, Postgres + RLS, Realtime, Edge Functions), RevenueCat, Expo Notifications, expo-camera, react-native-maps.
 
 ## Setup
-1. `npm install`
-2. Create a Supabase project, run `supabase/schema.sql`, enable Phone auth (needs an SMS provider; for India use a DLT-registered one such as Twilio/MSG91).
-3. `cp .env.example .env` and fill in Supabase + RevenueCat keys.
-4. Deploy the edge functions (`supabase functions deploy notify-parents revenuecat-webhook`) and set secrets `WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_SECRET`.
-   - Database Webhook: `scan_events` INSERT → `notify-parents` (Authorization: `Bearer <WEBHOOK_SECRET>`).
-   - RevenueCat webhook → `revenuecat-webhook`. Create entitlement `parent_access` and an offering with your subscription products.
-5. Set the EAS project id in `app.json` (`npx eas-cli init`) — required for push tokens.
-6. Subscriptions and push need a **development build**, not Expo Go: `npx eas-cli build --profile development --platform android`, then `npx expo start --dev-client`.
+1. `npm ci`
+2. Create a Supabase project and run `supabase/schema.sql` in the SQL editor. Enable Phone auth with an SMS provider that covers your country (Twilio, MessageBird, Vonage…).
+3. `cp .env.example .env` and fill it in (Supabase, RevenueCat, default dial code, privacy/terms/support links, bundle id, EAS project id, Android Google Maps key).
+4. Deploy the edge functions: `supabase functions deploy notify-parents revenuecat-webhook delete-account`, and set the secrets `WEBHOOK_SECRET` and `REVENUECAT_WEBHOOK_SECRET`.
+   - Database Webhook: `scan_events` INSERT → `notify-parents`, header `Authorization: Bearer <WEBHOOK_SECRET>`.
+   - RevenueCat webhook → `revenuecat-webhook`. Create the entitlement `parent_access` and an offering.
+5. Push notifications and purchases need a **development build**, not Expo Go: `npx eas-cli build --profile development`, then `npx expo start --dev-client`.
 
 ## Data onboarding
-Vehicles, students and drivers are managed by the operator (Supabase dashboard / SQL). Set `students.card_code` to the value encoded on the ID card and `students.parent_phone`; when a parent signs up with that number, their children are linked automatically. Assign `vehicles.driver_id` to the driver's profile.
+Vehicles, routes, students and drivers are managed by the school or operator in the Supabase dashboard (there is no admin UI yet). Set `vehicles.timezone` to the school's IANA zone (for example `Europe/London`), `students.card_code` to the value printed on the ID card, and `students.parent_phone` to the parent's number in **E.164** format (`+447700900123`). A parent who signs up with that number is linked to the child automatically. See `supabase/seed.sql`.
 
-## Design
-Telangana theme (Pochampally indigo, Bathukamma marigold, Kakatiya sandstone) with Kakatiya motifs (Kala Thoranam, Kamalam, stone frieze) — tokens in `src/theme`, motifs in `src/components/motifs.tsx`. UI is Telugu-first with an English toggle (`src/lib/i18n.tsx`); Telugu strings should be reviewed by a native speaker.
+## Translations
+English is the base language. To add a language, add a dictionary in `src/lib/i18n.tsx` and register it there; the language picker appears automatically. Dates and times follow the device locale.
 
-## Maps
-`react-native-maps`: set a Google Maps key in `app.json` → `android.config.googleMaps.apiKey` (iOS uses Apple Maps). Demo route/stops: `supabase/seed.sql`. Driver location is foreground-only for now (screen stays awake during a trip); background location is a possible later step.
+## Development
+`npm run typecheck`, `npm run lint`, `npm run doctor`.
 
-## Layout
-```
-src/app/(auth)     welcome, login (OTP), role selection
-src/app/(driver)   trip + scanner, students, history, settings
-src/app/(parent)   home (map + route + live bus), log, plan, settings
-src/app/child/[id] child attendance calendar
-src/lib            supabase, auth, push, purchases
-supabase/          schema.sql (tables, RLS, record_scan RPC), edge functions
-```
+## Roadmap: contributions welcome
+SchoolRide works end to end, but these are open for anyone who forks or contributes:
 
-## Before launch
-- Store policies: Google Play/App Store require in-app billing for the parent subscription; a child-data privacy policy is needed (DPDP Act 2023: verifiable parental consent, data minimisation).
-- Add an admin tool for schools to manage students/vehicles.
-- Android/iOS camera + notification permission flows should be tested on real devices.
+- **Branding**: app icon, splash image and store screenshots are still Expo placeholders (`assets/`). Change `BrandMark` in `src/components/ui.tsx` and the tokens in `src/theme`.
+- **Admin dashboard** for schools to manage vehicles, routes, students and cards (today: Supabase dashboard / SQL).
+- **Background location** for drivers (today the trip screen must stay open).
+- **Offline mode**: queue scans when the driver has no signal and sync later.
+- **Error states**: most lists show an empty state on network failure; parent Home shows a retry message.
+- **Dark mode** and Dynamic Type testing at the largest sizes.
+- **Translations**: UI strings and the push alert text (`supabase/functions/notify-parents`) are English only.
+- **Tests**: there are none yet; `record_scan` and the RLS policies are the most valuable to cover.
+- **Database migrations**: `schema.sql` is a single bootstrap file; move it to `supabase/migrations` before changing a live project.
+
+## License
+MIT. See [LICENSE](LICENSE).

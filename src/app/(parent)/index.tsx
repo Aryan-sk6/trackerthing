@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PaywallNotice } from '@/components/PaywallNotice';
 import { RouteMap } from '@/components/RouteMap';
 import { Avatar, Badge, Button, Empty, ScreenHeader } from '@/components/ui';
@@ -9,27 +9,32 @@ import { nearestStopIndex } from '@/lib/geo';
 import { useI18n } from '@/lib/i18n';
 import { useParentData, type Child } from '@/lib/useParentData';
 import { useSubscription } from '@/lib/useSubscription';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { colors, fonts, radius, shadow, spacing } from '@/theme';
 
 /** A location older than this is shown as stale rather than live. */
 const STALE_MS = 2 * 60 * 1000;
 
 function StatusBadge({ kind }: { kind: Child['kind'] }) {
   const { t } = useI18n();
-  if (kind === 'board') return <Badge tone="green" icon="checkmark" label={t('boarded')} />;
-  if (kind === 'alight') return <Badge tone="indigo" icon="arrow-forward" label={t('gotOff')} />;
+  if (kind === 'board') return <Badge tone="success" icon="checkmark" label={t('boarded')} />;
+  if (kind === 'alight') return <Badge tone="brand" icon="arrow-forward" label={t('gotOff')} />;
   return <Badge tone="neutral" icon="ellipse-outline" label={t('notBoarded')} />;
 }
 
 export default function ParentHome() {
-  const { t, lang } = useI18n();
+  const { t, locale } = useI18n();
   const { profile } = useAuth();
   const { active, loading: subLoading } = useSubscription();
-  const { children, selected, select, route, stops, bus, refreshing, refresh } = useParentData(active);
-  const locale = lang === 'te' ? 'te-IN' : 'en-IN';
+  const { children, selected, select, route, stops, bus, refreshing, failed, refresh } = useParentData(active);
+  // Ticks so a bus that stops reporting turns "stale" on screen without any other update.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   const myStop = stops.find((s) => s.id === selected?.student.stop_id) ?? null;
-  const busAge = bus ? Date.now() - new Date(bus.updated_at).getTime() : Infinity;
+  const busAge = bus ? now - new Date(bus.updated_at).getTime() : Infinity;
   const live = busAge < STALE_MS;
 
   // How many stops until the bus reaches this child's stop (only while it's still ahead).
@@ -39,7 +44,13 @@ export default function ParentHome() {
     return diff > 0 ? diff : null;
   }, [bus, myStop, stops]);
 
-  if (subLoading) return null;
+  if (subLoading) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.brand} />
+      </View>
+    );
+  }
   if (!active) return <PaywallNotice title={t('todayRide')} />;
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
@@ -53,7 +64,7 @@ export default function ParentHome() {
 
         <View style={styles.sheet}>
           {children.length === 0 || !selected ? (
-            <Empty text={t('noChildren')} />
+            <Empty text={failed ? t('loadFailed') : t('noChildren')} />
           ) : (
             <ScrollView
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
@@ -71,7 +82,7 @@ export default function ParentHome() {
                         onPress={() => select(c.student.id)}
                         style={[styles.chip, on && styles.chipOn]}
                       >
-                        <Text style={[styles.chipText, on && { color: colors.ink }]}>
+                        <Text style={[styles.chipText, on && { color: colors.onBrand }]}>
                           {c.student.full_name.split(' ')[0]}
                         </Text>
                       </Pressable>
@@ -99,7 +110,7 @@ export default function ParentHome() {
               </View>
 
               <View style={styles.busLine}>
-                <View style={[styles.dot, { backgroundColor: live ? colors.green : colors.border }]} />
+                <View style={[styles.dot, { backgroundColor: live ? colors.success : colors.border }]} />
                 <Text style={styles.busText}>
                   {live
                     ? `${t('busOnWay')}${stopsAway ? ` · ${stopsAway} ${t('stopsAway')}` : ''}`
@@ -132,28 +143,28 @@ const styles = StyleSheet.create({
     bottom: 0,
     maxHeight: '58%',
     backgroundColor: colors.card,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderTopWidth: 3,
-    borderColor: colors.primary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: spacing.md,
+    paddingTop: spacing.lg,
+    ...shadow,
+    shadowOffset: { width: 0, height: -4 },
   },
   chip: {
     minHeight: 40,
     paddingHorizontal: 16,
     borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: colors.indigo,
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipOn: { backgroundColor: colors.primary },
-  chipText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.indigo },
+  chipOn: { backgroundColor: colors.brand },
+  chipText: { ...fonts.bodySemi, fontSize: 15, color: colors.ink },
   childRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { fontFamily: fonts.display, fontSize: 21, lineHeight: 28, color: colors.ink },
-  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted },
+  name: { ...fonts.display, fontSize: 20, color: colors.ink },
+  muted: { ...fonts.body, fontSize: 14, color: colors.muted },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   busLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dot: { width: 12, height: 12, borderRadius: 6 },
-  busText: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.ink, flex: 1 },
+  busText: { ...fonts.bodySemi, fontSize: 16, color: colors.ink, flex: 1 },
 });

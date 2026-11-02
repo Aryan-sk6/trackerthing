@@ -26,6 +26,16 @@ export function configurePurchases(userId: string): boolean {
   }
 }
 
+/** Detach purchases from the signed-out user so the next account on this device starts clean. */
+export async function resetPurchases(): Promise<void> {
+  if (!configured) return;
+  try {
+    await Purchases.logOut();
+  } catch {
+    // Already anonymous.
+  }
+}
+
 export function hasAccess(info: CustomerInfo): boolean {
   return ENTITLEMENT in info.entitlements.active;
 }

@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, ScreenHeader } from '@/components/ui';
+import { Button, LanguagePicker, ScreenHeader } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import type { Role } from '@/lib/types';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { colors, fonts, radius, shadow, spacing } from '@/theme';
 
 function RoleCard({
   icon,
@@ -25,14 +25,14 @@ function RoleCard({
       onPress={onPress}
       style={[styles.roleCard, active && styles.roleCardActive]}
     >
-      <Ionicons name={icon} size={40} color={colors.indigo} />
+      <Ionicons name={icon} size={36} color={active ? colors.brand : colors.muted} />
       <Text style={styles.roleLabel}>{label}</Text>
     </Pressable>
   );
 }
 
 export default function RoleSelect() {
-  const { t, lang, setLang } = useI18n();
+  const { t } = useI18n();
   const { completeProfile, signOut } = useAuth();
   const [role, setRole] = useState<Role>('parent');
   const [name, setName] = useState('');
@@ -58,12 +58,14 @@ export default function RoleSelect() {
           style={styles.input}
           placeholder={t('fullName')}
           placeholderTextColor={colors.muted}
+          textContentType="name"
+          autoComplete="name"
           value={name}
           onChangeText={setName}
           accessibilityLabel={t('fullName')}
         />
         <Button title={t('continue')} loading={busy} disabled={name.trim().length < 2} onPress={submit} />
-        <Button title={lang === 'te' ? 'English' : 'తెలుగు'} variant="secondary" onPress={() => setLang(lang === 'te' ? 'en' : 'te')} />
+        <LanguagePicker />
         <Button title={t('signOut')} variant="secondary" onPress={signOut} />
       </View>
     </View>
@@ -82,19 +84,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.lg,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: 'transparent',
+    ...shadow,
   },
-  roleCardActive: { borderColor: colors.primary, backgroundColor: '#FFF3D6' },
-  roleLabel: { fontFamily: fonts.display, fontSize: 20, lineHeight: 28, color: colors.ink },
-  hint: { fontFamily: fonts.body, fontSize: 16, color: colors.muted },
+  roleCardActive: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
+  roleLabel: { ...fonts.bodySemi, fontSize: 18, color: colors.ink },
+  hint: { ...fonts.body, fontSize: 16, color: colors.muted },
   input: {
-    height: 56,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: colors.indigo,
+    minHeight: 56,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    fontFamily: fonts.bodyMedium,
+    ...fonts.bodyMedium,
     fontSize: 18,
     color: colors.ink,
   },

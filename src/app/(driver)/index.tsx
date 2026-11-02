@@ -3,21 +3,21 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import { Badge, Button, Card, ScreenHeader, Segmented } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { startSharing, stopSharing } from '@/lib/locationSharing';
 import { getShareLocation } from '@/lib/prefs';
 import { supabase } from '@/lib/supabase';
 import type { ScanKind, ScanResult, Trip, TripKind } from '@/lib/types';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { colors, fonts, radius, shadow, spacing } from '@/theme';
 
 /** Ignore the same card for this long so one tap doesn't toggle board/alight twice. */
 const RESCAN_COOLDOWN_MS = 4000;
 const KEEP_AWAKE_TAG = 'trip';
 
 export default function DriverTrip() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [studentCount, setStudentCount] = useState(0);
@@ -47,30 +47,34 @@ export default function DriverTrip() {
     setSharing(await startSharing(vId, tripId));
   }, []);
 
-  const load = useCallback(async () => {
-    const { data: vehicle } = await supabase.from('vehicles').select('id').maybeSingle();
-    setVehicleId(vehicle?.id ?? null);
-    const { count } = await supabase.from('students').select('id', { count: 'exact', head: true });
-    setStudentCount(count ?? 0);
-    const { data: open } = await supabase
-      .from('trips')
-      .select('*')
-      .is('ended_at', null)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const current = (open as Trip | null) ?? null;
-    setTrip(current);
-    if (current && vehicle) {
-      await loadTripState(current.id);
-      await beginSharing(vehicle.id, current.id);
-    }
-    setLoading(false);
-  }, [loadTripState, beginSharing]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      const { data: vehicle } = await supabase.from('vehicles').select('id').maybeSingle();
+      const { count } = await supabase.from('students').select('id', { count: 'exact', head: true });
+      const { data: open } = await supabase
+        .from('trips')
+        .select('*')
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      const current = (open as Trip | null) ?? null;
+      setVehicleId(vehicle?.id ?? null);
+      setStudentCount(count ?? 0);
+      setTrip(current);
+      // Resume an open trip (app was killed mid-route): reload who is on board and restart sharing.
+      if (current && vehicle) {
+        await loadTripState(current.id);
+        await beginSharing(vehicle.id, current.id);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadTripState, beginSharing]);
 
   // Keep the phone awake while a trip is open so location keeps flowing to parents.
   useEffect(() => {
@@ -134,7 +138,13 @@ export default function DriverTrip() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.brand} />
+      </View>
+    );
+  }
 
   if (!trip) {
     return (
@@ -170,8 +180,16 @@ export default function DriverTrip() {
       <View style={styles.body}>
         {!permission?.granted ? (
           <Card style={{ gap: spacing.md }}>
-            <Text style={styles.heading}>{t('cameraNeeded')}</Text>
-            <Button title={t('allowCamera')} onPress={requestPermission} />
+            {/* Neutral "Continue": the real decision happens in the system prompt. Once the
+                user has said no for good, the only way back is the Settings app. */}
+            <Text style={styles.heading}>
+              {permission && !permission.canAskAgain ? t('cameraBlocked') : t('cameraNeeded')}
+            </Text>
+            {permission && !permission.canAskAgain ? (
+              <Button title={t('openSettings')} onPress={() => void Linking.openSettings()} />
+            ) : (
+              <Button title={t('continue')} onPress={requestPermission} />
+            )}
           </Card>
         ) : (
           <View style={styles.cameraWrap}>
@@ -193,8 +211,8 @@ export default function DriverTrip() {
         <View
           style={[
             styles.result,
-            { backgroundColor: error ? colors.terracotta : last?.kind === 'alight' ? colors.indigo : last ? colors.green : colors.card },
-            !error && !last && { borderWidth: 1, borderColor: colors.border },
+            { backgroundColor: error ? colors.danger : last?.kind === 'alight' ? colors.brand : last ? colors.success : colors.card },
+            !error && !last && shadow,
           ]}
         >
           {error ? (
@@ -208,7 +226,7 @@ export default function DriverTrip() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.resultText, { color: '#fff' }]}>{last.student_name}</Text>
                 <Text style={styles.resultSub}>
-                  {last.kind === 'board' ? t('boarded') : t('gotOff')} · {new Date(last.scanned_at).toLocaleTimeString()}
+                  {last.kind === 'board' ? t('boarded') : t('gotOff')} · {new Date(last.scanned_at).toLocaleTimeString(locale, { timeStyle: 'short' })}
                 </Text>
               </View>
             </>
@@ -218,7 +236,7 @@ export default function DriverTrip() {
         </View>
 
         <View style={styles.counter}>
-          <Badge tone="green" icon="people" label={`${t('onBoardCount')} ${onBoard} / ${studentCount}`} />
+          <Badge tone="success" icon="people" label={`${t('onBoardCount')} ${onBoard} / ${studentCount}`} />
         </View>
         <Button title={t('endTrip')} variant="danger" loading={busy} onPress={endTrip} />
       </View>
@@ -246,26 +264,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   frame: { width: 220, height: 220 },
-  corner: { position: 'absolute', width: CORNER, height: CORNER, borderColor: colors.primary },
+  corner: { position: 'absolute', width: CORNER, height: CORNER, borderColor: '#FFFFFF' },
   cameraHint: {
     position: 'absolute',
     bottom: 16,
-    color: colors.onIndigo,
-    fontFamily: fonts.bodySemi,
+    color: colors.onBrand,
+    ...fonts.bodySemi,
     fontSize: 16,
   },
-  heading: { fontFamily: fonts.display, fontSize: 20, lineHeight: 28, color: colors.ink },
-  text: { fontFamily: fonts.body, fontSize: 16, lineHeight: 24, color: colors.muted },
-  warn: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.terracotta },
+  heading: { ...fonts.display, fontSize: 20, color: colors.ink },
+  text: { ...fonts.body, fontSize: 16, lineHeight: 24, color: colors.muted },
+  warn: { ...fonts.bodyMedium, fontSize: 15, color: colors.danger },
   result: {
     minHeight: 72,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  resultText: { fontFamily: fonts.display, fontSize: 21, lineHeight: 28, flexShrink: 1 },
-  resultSub: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#fff' },
+  resultText: { ...fonts.display, fontSize: 21, flexShrink: 1 },
+  resultSub: { ...fonts.bodyMedium, fontSize: 14, color: '#fff' },
   counter: { flexDirection: 'row', justifyContent: 'center' },
 });

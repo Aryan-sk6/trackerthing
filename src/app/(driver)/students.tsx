@@ -56,6 +56,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   list: { padding: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.ink },
-  muted: { fontFamily: fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 },
+  name: { ...fonts.bodyBold, fontSize: 17, color: colors.ink },
+  muted: { ...fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 },
 });

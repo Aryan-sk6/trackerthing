@@ -10,8 +10,8 @@ create table public.profiles (
   id uuid primary key references auth.users on delete cascade,
   role text not null check (role in ('driver', 'parent')),
   full_name text,
-  phone text,
-  language text not null default 'te' check (language in ('te', 'en')),
+  phone text,                              -- copied from the verified auth user; clients cannot set it
+  language text not null default 'en' check (language ~ '^[a-z]{2,3}(-[A-Za-z0-9]+)*$'),
   notify_board boolean not null default true,
   notify_alight boolean not null default true,
   created_at timestamptz not null default now()
@@ -20,11 +20,15 @@ create table public.profiles (
 create table public.vehicles (
   id uuid primary key default gen_random_uuid(),
   driver_id uuid references public.profiles on delete set null,
-  reg_number text not null unique,        -- e.g. TS09UB1234
+  reg_number text not null unique,        -- licence plate or fleet number
   school_name text not null,
-  district text,                          -- Telangana district
+  district text,                          -- optional area / depot label
   driver_name text,                       -- shown to parents
-  driver_phone text
+  driver_phone text,                      -- E.164, e.g. +12025550123
+  -- IANA zone of the school ("Europe/London", "America/Chicago"). Decides which calendar day a
+  -- scan belongs to and the time shown in push alerts. The check rejects unknown zone names.
+  timezone text not null default 'UTC'
+    check (('2000-01-01 00:00+00'::timestamptz at time zone timezone) is not null)
 );
 
 -- A route is the polyline the bus drives; stops are where children board.
@@ -54,7 +58,7 @@ create table public.students (
   card_code text not null unique,         -- value encoded in the ID card QR/barcode
   vehicle_id uuid references public.vehicles on delete set null,
   stop_id uuid references public.route_stops on delete set null,
-  parent_phone text                       -- used to auto-link a parent on sign-up
+  parent_phone text                       -- full international number (E.164, e.g. +447700900123); auto-links the parent on sign-up
 );
 
 create table public.parent_students (
@@ -66,7 +70,8 @@ create table public.parent_students (
 create table public.trips (
   id uuid primary key default gen_random_uuid(),
   vehicle_id uuid not null references public.vehicles,
-  driver_id uuid not null references public.profiles default auth.uid(),
+  -- Nullable so deleting a driver's account keeps the school's trip history.
+  driver_id uuid references public.profiles on delete set null default auth.uid(),
   kind text not null check (kind in ('morning', 'evening')),
   started_at timestamptz not null default now(),
   ended_at timestamptz
@@ -76,7 +81,7 @@ create unique index one_open_trip_per_vehicle on public.trips (vehicle_id) where
 create table public.scan_events (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references public.trips on delete cascade,
-  student_id uuid not null references public.students,
+  student_id uuid not null references public.students on delete cascade,
   kind text not null check (kind in ('board', 'alight')),
   scanned_at timestamptz not null default now()
 );
@@ -110,36 +115,53 @@ create table public.subscriptions (
 );
 
 -- Daily attendance: a student is present on a day if they boarded at least once.
+-- Days are counted in the school's time zone (via the student's vehicle), not UTC.
 create view public.attendance_daily with (security_invoker = true) as
 select
   se.student_id,
-  (se.scanned_at at time zone 'Asia/Kolkata')::date as day,
+  (se.scanned_at at time zone coalesce(v.timezone, 'UTC'))::date as day,
   min(se.scanned_at) filter (where se.kind = 'board')  as first_boarded,
   max(se.scanned_at) filter (where se.kind = 'alight') as last_alighted
 from public.scan_events se
+join public.students s on s.id = se.student_id
+left join public.vehicles v on v.id = s.vehicle_id
 group by 1, 2
 having count(*) filter (where se.kind = 'board') > 0;
 
 -- ───────────── Helpers ─────────────
 
-create function public.is_subscribed(uid uuid) returns boolean
+-- Takes no argument so a caller can only ask about themselves.
+create function public.is_subscribed() returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.subscriptions
-    where parent_id = uid and status = 'active'
+    where parent_id = auth.uid() and status = 'active'
       and (expires_at is null or expires_at > now())
   );
 $$;
 
+-- The phone number is what links a parent to children, so it must be the OTP-verified number
+-- on the auth user, never a value the client sends. Runs on every insert and update.
+create function public.set_profile_phone() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  select u.phone into new.phone from auth.users u where u.id = new.id;
+  return new;
+end $$;
+
+create trigger profiles_set_phone
+before insert or update on public.profiles
+for each row execute function public.set_profile_phone();
+
 -- Link a new parent to the students registered with their phone number.
+-- Compares every digit (country code included), so numbers from different countries never collide.
 create function public.link_parent_students() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if new.role = 'parent' and new.phone is not null then
     insert into public.parent_students (parent_id, student_id)
     select new.id, s.id from public.students s
-    where right(regexp_replace(s.parent_phone, '\D', '', 'g'), 10)
-        = right(regexp_replace(new.phone, '\D', '', 'g'), 10)
+    where regexp_replace(s.parent_phone, '\D', '', 'g') = regexp_replace(new.phone, '\D', '', 'g')
     on conflict do nothing;
   end if;
   return new;
@@ -213,7 +235,7 @@ create policy "driver sees own route" on public.routes for select using (
   vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
 );
 create policy "subscribed parent sees child route" on public.routes for select using (
-  public.is_subscribed(auth.uid()) and vehicle_id in (
+  public.is_subscribed() and vehicle_id in (
     select s.vehicle_id from public.students s
     join public.parent_students ps on ps.student_id = s.id where ps.parent_id = auth.uid())
 );
@@ -222,7 +244,7 @@ create policy "driver sees own stops" on public.route_stops for select using (
                where v.driver_id = auth.uid())
 );
 create policy "subscribed parent sees child stops" on public.route_stops for select using (
-  public.is_subscribed(auth.uid()) and route_id in (
+  public.is_subscribed() and route_id in (
     select r.id from public.routes r
     join public.students s on s.vehicle_id = r.vehicle_id
     join public.parent_students ps on ps.student_id = s.id where ps.parent_id = auth.uid())
@@ -233,9 +255,11 @@ create policy "driver writes own bus location" on public.bus_locations for all u
   vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
 ) with check (
   vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
+  and trip_id in (select id from public.trips
+                  where driver_id = auth.uid() and vehicle_id = bus_locations.vehicle_id and ended_at is null)
 );
 create policy "subscribed parent sees live bus" on public.bus_locations for select using (
-  public.is_subscribed(auth.uid())
+  public.is_subscribed()
   and trip_id in (select id from public.trips where ended_at is null)
   and vehicle_id in (
     select s.vehicle_id from public.students s
@@ -257,14 +281,17 @@ create policy "driver trips start" on public.trips for insert with check (
   and vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
 );
 create policy "driver trips end" on public.trips for update using (driver_id = auth.uid())
-  with check (driver_id = auth.uid());
+  with check (
+    driver_id = auth.uid()
+    and vehicle_id in (select id from public.vehicles where driver_id = auth.uid())
+  );
 
 -- No insert policy on scan_events: rows are created only through record_scan().
 create policy "driver reads own scans" on public.scan_events for select using (
   trip_id in (select id from public.trips where driver_id = auth.uid())
 );
 create policy "subscribed parent reads child scans" on public.scan_events for select using (
-  public.is_subscribed(auth.uid())
+  public.is_subscribed()
   and student_id in (select student_id from public.parent_students where parent_id = auth.uid())
 );
 
@@ -273,7 +300,13 @@ create policy "own push tokens" on public.push_tokens for all
 
 create policy "own subscription read" on public.subscriptions for select using (parent_id = auth.uid());
 
+-- Postgres grants EXECUTE to PUBLIC by default; narrow it to signed-in users.
+revoke execute on function public.record_scan(uuid, text) from public, anon;
 grant execute on function public.record_scan(uuid, text) to authenticated;
+revoke execute on function public.is_subscribed() from public, anon;
+grant execute on function public.is_subscribed() to authenticated;
+revoke execute on function public.set_profile_phone() from public, anon, authenticated;
+revoke execute on function public.link_parent_students() from public, anon, authenticated;
 
 -- Realtime for the parent "Today" screen (respects RLS).
 alter publication supabase_realtime add table public.scan_events;

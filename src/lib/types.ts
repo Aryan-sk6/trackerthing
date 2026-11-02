@@ -7,7 +7,7 @@ export interface Profile {
   role: Role;
   full_name: string | null;
   phone: string | null;
-  language: 'te' | 'en';
+  language: string;
   notify_board: boolean;
   notify_alight: boolean;
 }
@@ -29,6 +29,8 @@ export interface Vehicle {
   district: string | null;
   driver_name: string | null;
   driver_phone: string | null;
+  /** IANA time zone of the school, e.g. "Europe/London". Used for daily attendance and push text. */
+  timezone: string;
 }
 
 export interface RouteStop {

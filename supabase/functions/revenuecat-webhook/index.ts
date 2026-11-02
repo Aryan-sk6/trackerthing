@@ -26,6 +26,11 @@ Deno.serve(async (req) => {
 
   const { event } = await req.json();
   const parentId: string = event.app_user_id;
+  // Purchases made before sign-in carry an anonymous "$RCAnonymousID:…" id; only Supabase user ids
+  // (UUIDs) map to a parent. Acknowledge the rest so RevenueCat does not retry them forever.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parentId ?? '')) {
+    return new Response('ignored: not a user id');
+  }
   // Cancellation keeps access until expiration_at_ms, so only ACTIVE/ENDED change status.
   let status: 'active' | 'expired' | null = null;
   if (ACTIVE.has(event.type)) status = 'active';
